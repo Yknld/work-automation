@@ -108,3 +108,17 @@ Update all three files: automation.py, spreadsheet_jobs.py and desktop.py. No de
 The desktop app defaults to a **15-minute break after every 100 AI requests**, before sending the next eligible row. Change the request count and minutes before starting a run. Invalid AI replies count as requests; rows skipped for matching errors do not. There is no unnecessary pause after the final request. The log shows the remaining break time every 30 seconds. Stop cancels a break immediately, with completed rows already saved. Counters reset for each run; manual Copilot usage and previous runs are not counted.
 
 This is pacing, not a guarantee that Microsoft limits will reset after 15 minutes. A browser failure still stops without automatic resubmission. If already rate-limited, wait for the service to allow requests before restarting. The current app does not automatically resume a previous output workbook.
+
+## Local redaction rules
+
+Click **Redaction rules...** after loading your sheets. Add rules selecting any A/B column, a placeholder such as `[PRIVATE_VALUE]`, optional semicolon-separated literal aliases, and a matching mode. Click **Apply rules**. Use multiple rules for multiple sensitive variables; rules are not restricted to people or company names. Rules currently reset when you close the app.
+
+- Exact: case-insensitive full-value matches with alphanumeric boundaries.
+- Normalized (default): ignores case, accents and separators; handles phone-format variations and spacing differences.
+- Fuzzy: also finds high-similarity spelling variations for alphabetic values at least eight characters long. Short aliases and numeric identifiers are never fuzzy-matched. Can over-redact; inspect preview.
+
+Each rule uses the current A row or its uniquely matched B row. B-source rules require matching columns even when the prompt has no B tags. Missing rule columns or ambiguous B matches block that row before sending. Blank rule values are ignored; aliases still apply. No initials or abbreviations are guessed. No automatic detection of unrelated sensitive values is performed.
+
+Redaction applies to substituted values and literal prompt text before sending. Preview displays the same redacted task. Output-column names are used as JSON keys: choose generic labels, never put sensitive values in output names. Originals and the source-data copy in the output workbook remain unchanged; redaction protects outgoing prompt text, not the saved workbook. There is no reverse substitution or external redaction service. Only values present in configured current-row fields or aliases are covered; other identifying context can remain. Use approved test data and preview before processing real records.
+
+Update desktop.py, spreadsheet_jobs.py, and the new redaction.py together. No new package required.

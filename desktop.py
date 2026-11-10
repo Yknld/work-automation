@@ -15,6 +15,7 @@ class App:
     def __init__(self, root):
         self.root=root;root.title('Work Automation — Spreadsheet prompts');root.geometry('1050x800')
         self.events=queue.Queue();self.stop=threading.Event();self.running=False
+        self.redaction_rules=[]
         self.paths={};self.sheets={};self.keys={};self.lists={};self.rows={}
         shell=ttk.Frame(root,padding=12);shell.pack(fill='both',expand=True)
         ttk.Label(shell,text='Spreadsheet A supplies the rows. B is optional and matches by a shared column.',wraplength=980).pack(anchor='w')
@@ -36,6 +37,10 @@ class App:
         ttk.Label(shell,text='Prompt — double-click a column to insert its tag. Describe each requested output.').pack(anchor='w')
         self.prompt=tk.Text(shell,height=7,wrap='word');self.prompt.pack(fill='both',expand=True)
         self.prompt.insert('1.0','Evaluate this text: {{A.Description}}\nFor Assessment, return Yes, No, or Unclear. For Reason, briefly explain using the text.')
+        self.redaction_label=tk.StringVar(value='Redaction: no rules')
+        privacy=ttk.Frame(shell);privacy.pack(fill='x',pady=4)
+        ttk.Button(privacy,text='Redaction rules...',command=self.edit_redaction).pack(side='left')
+        ttk.Label(privacy,textvariable=self.redaction_label).pack(side='left',padx=8)
         settings=ttk.Frame(shell);settings.pack(fill='x',pady=8)
         ttk.Label(settings,text='New output columns (comma-separated):').grid(row=0,column=0,sticky='w')
         self.outputs=tk.StringVar(value='Assessment, Reason');ttk.Entry(settings,textvariable=self.outputs,width=55).grid(row=0,column=1,columnspan=3,sticky='we')
@@ -65,6 +70,47 @@ class App:
         self.log=tk.Text(shell,height=6,state='disabled',wrap='word');self.log.pack(fill='x',pady=8)
         ttk.Label(shell,text='Prompts go to Microsoft 365 Copilot through Edge. Originals stay unchanged. Close output Excel while running.').pack(anchor='w')
         root.after(100,self.poll);root.protocol('WM_DELETE_WINDOW',self.close)
+    def edit_redaction(self):
+        if self.running:
+            messagebox.showinfo('Run in progress','Change redaction rules before the next run.');return
+        window=tk.Toplevel(self.root);window.title('Local redaction rules');window.geometry('850x500')
+        ttk.Label(window,text='Replace values from any selected column in every prompt. B rules require ID matching.
+Blank source cells are ignored. Aliases are literal values separated by semicolons.').pack(anchor='w',padx=10,pady=8)
+        listing=tk.Listbox(window,height=8);listing.pack(fill='both',expand=True,padx=10)
+        pending=[dict(r) for r in self.redaction_rules]
+        def refresh():
+            listing.delete(0,'end')
+            for r in pending:listing.insert('end',f"{r['source']}.{r['column']} → {r['placeholder']} ({r['mode']})")
+        refresh()
+        form=ttk.Frame(window,padding=10);form.pack(fill='x')
+        source=ttk.Combobox(form,values=['A','B'],state='readonly',width=4);source.set('A')
+        column=ttk.Combobox(form,state='readonly',width=30)
+        def columns(*args):column['values']=self.lists[source.get()].get(0,'end');column.set('')
+        source.bind('<<ComboboxSelected>>',columns);columns()
+        placeholder=ttk.Entry(form,width=22);placeholder.insert(0,'[PRIVATE_VALUE]')
+        mode=ttk.Combobox(form,values=['Exact','Normalized','Fuzzy'],state='readonly',width=14);mode.set('Normalized')
+        for i,(label,widget) in enumerate([('File',source),('Source column',column),('Placeholder',placeholder),('Matching',mode)]):
+            ttk.Label(form,text=label).grid(row=0,column=i,sticky='w');widget.grid(row=1,column=i,padx=3)
+        ttk.Label(form,text='Aliases (optional; semicolon-separated)').grid(row=2,column=0,columnspan=4,sticky='w')
+        aliases=ttk.Entry(form);aliases.grid(row=3,column=0,columnspan=4,sticky='we')
+        def add():
+            from redaction import rules_for_rows
+            r=dict(source=source.get(),column=column.get(),placeholder=placeholder.get(),mode=mode.get(),aliases=aliases.get())
+            try:
+                if not r['column']:raise ValueError('Choose a source column.')
+                rules_for_rows([r],{r['column']:''},{r['column']:''})
+                pending.append(r);refresh();aliases.delete(0,'end')
+            except ValueError as exc:messagebox.showerror('Rule',str(exc))
+        def remove():
+            for i in reversed(listing.curselection()):pending.pop(i)
+            refresh()
+        def save():
+            self.redaction_rules=pending;self.redaction_label.set(f'Redaction: {len(pending)} rule(s)');window.destroy()
+        buttons=ttk.Frame(window,padding=10);buttons.pack(fill='x')
+        for label,fn in [('Add rule',add),('Remove selected',remove),('Apply rules',save),('Cancel',window.destroy)]:ttk.Button(buttons,text=label,command=fn).pack(side='left',padx=4)
+        ttk.Label(window,text='Normalized ignores case, accents and separators. Fuzzy may over-replace; preview first.
+Rules are row-specific and stay local. This is not guaranteed anonymization. Rules reset when the app closes.').pack(anchor='w',padx=10,pady=8)
+
     def open_file(self, which):
         if which == 'output' and self.running:
             messagebox.showinfo('Output in use', 'Wait until the run finishes, or stop after the current row, before opening the output in Excel.')
@@ -113,12 +159,12 @@ class App:
         path=filedialog.asksaveasfilename(defaultextension='.xlsx',filetypes=[('Excel workbook','*.xlsx')],initialfile='automation_results.xlsx')
         if path:self.destination.set(path)
     def config(self):
-        return dict(pause_every=int(self.pause_every.get()),pause_minutes=float(self.pause_minutes.get()),delete_chats=self.delete_chats.get(),a=self.paths['A'].get(),b=self.paths['B'].get(),sheet_a=self.sheets['A'].get(),sheet_b=self.sheets['B'].get(),key_a=self.keys['A'].get(),key_b=self.keys['B'].get(),prompt=self.prompt.get('1.0','end').strip(),outputs=[s.strip() for s in self.outputs.get().split(',')],first=int(self.first.get()),last=int(self.last.get()),output=self.destination.get())
+        return dict(redaction_rules=[dict(r) for r in self.redaction_rules],pause_every=int(self.pause_every.get()),pause_minutes=float(self.pause_minutes.get()),delete_chats=self.delete_chats.get(),a=self.paths['A'].get(),b=self.paths['B'].get(),sheet_a=self.sheets['A'].get(),sheet_b=self.sheets['B'].get(),key_a=self.keys['A'].get(),key_b=self.keys['B'].get(),prompt=self.prompt.get('1.0','end').strip(),outputs=[s.strip() for s in self.outputs.get().split(',')],first=int(self.first.get()),last=int(self.last.get()),output=self.destination.get())
     def preview(self):
         try:
             c=self.config();_,rows=read_sheet(c['a'],c['sheet_a'])
             b=read_sheet(c['b'],c['sheet_b'])[1] if c['b'] else None
-            text=request(prepare(c['prompt'],rows[c['first']],b,c['key_a'],c['key_b']),c['outputs'])
+            text=request(prepare(c['prompt'],rows[c['first']],b,c['key_a'],c['key_b'],c['redaction_rules']),c['outputs'])
             window=tk.Toplevel(self.root);window.title('Exact prompt preview — nothing sent')
             view=tk.Text(window,wrap='word',width=100,height=25);view.pack(fill='both',expand=True);view.insert('1.0',text);view.config(state='disabled')
         except Exception as exc:messagebox.showerror('Preview',str(exc))

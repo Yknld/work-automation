@@ -6,6 +6,8 @@ import re
 from pathlib import Path
 from openpyxl import load_workbook
 
+from redaction import rules_for_rows, redact
+
 TAG = re.compile(r'\{\{([AB])\.([^{}]+)\}\}')
 
 
@@ -29,9 +31,10 @@ def key(value):
     return '' if value is None else str(value).strip()
 
 
-def prepare(template, a, b_rows=None, a_key='', b_key=''):
+def prepare(template, a, b_rows=None, a_key='', b_key='', redaction_rules=None):
+    redaction_rules = redaction_rules or []
     b = {}
-    if any(source == 'B' for source, _ in TAG.findall(template)):
+    if any(source == 'B' for source, _ in TAG.findall(template)) or any(r.get('source')=='B' for r in redaction_rules):
         if b_rows is None or not a_key or not b_key:
             raise ValueError('Choose both matching columns for spreadsheet B tags.')
         match = key(a.get(a_key))
@@ -41,16 +44,26 @@ def prepare(template, a, b_rows=None, a_key='', b_key=''):
         if len(matches) != 1:
             raise ValueError(f'Expected one matching B row; found {len(matches)}.')
         b = matches[0]
+    terms = rules_for_rows(redaction_rules, a, b)
     def replace(m):
         row = a if m[1] == 'A' else b
         if m[2] not in row:
             raise ValueError(f'Unknown tag: {m[0]}')
-        return json.dumps(row[m[2]], ensure_ascii=False, default=str)
+        value = row[m[2]]
+        if terms and value is not None:
+            value = redact(str(value), terms)
+        return json.dumps(value, ensure_ascii=False, default=str)
     # Validate the template before substitution; source text may itself contain braces.
     remainder = TAG.sub('', template)
     if '{{' in remainder or '}}' in remainder:
         raise ValueError('Invalid tag. Use {{A.Column name}} or {{B.Column name}}.')
-    return TAG.sub(replace, template)
+    # Redact literal instructions too, without altering tag names before lookup.
+    pieces=[];last=0
+    for match in TAG.finditer(template):
+        pieces.append(redact(template[last:match.start()],terms))
+        pieces.append(replace(match));last=match.end()
+    pieces.append(redact(template[last:],terms))
+    return ''.join(pieces)
 
 
 def request(prompt, outputs):
@@ -152,7 +165,7 @@ def run_job(config, client_factory, stop, report):
                 if stop.is_set():break
                 report(f'Row {number}: preparing')
                 try:
-                    prompt = prepare(config['prompt'],rows[number],b_rows,config['key_a'],config['key_b'])
+                    prompt = prepare(config['prompt'],rows[number],b_rows,config['key_a'],config['key_b'],config.get('redaction_rules'))
                 except ValueError as exc:
                     literal(ws.cell(number,start+len(outputs)),'Needs review')
                     literal(ws.cell(number,start+len(outputs)+1),str(exc))
