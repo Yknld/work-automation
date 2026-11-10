@@ -49,7 +49,7 @@ class Copilot:
         try:
             self.context = self.runtime.chromium.launch_persistent_context(
                 str(profile), channel='msedge', headless=False,
-                accept_downloads=False)
+                accept_downloads=False, chromium_sandbox=True)
             self.page = self.context.pages[0] if self.context.pages else self.context.new_page()
             self.page.goto(URL, wait_until='domcontentloaded', timeout=60000)
             return self
@@ -86,6 +86,24 @@ class Copilot:
             self.page.wait_for_timeout(500)
         raise CopilotError('Copilot editor not ready. Check the visible Edge window for sign-in, policy messages, or a changed interface.')
 
+    def submit_prompt(self, editor, prompt):
+        editor.fill(prompt)
+        # Wait for the app to enable Send after processing the editor input.
+        send = self.page.get_by_role('button', name=re.compile(
+            r'^(Send|Send message|Send prompt|Submit|Submit prompt|Envoyer|Envoyer le message)(\s*\([^)]*\))?$', re.I
+        )).filter(visible=True)
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            count = send.count()
+            if count > 1:
+                raise CopilotError('Multiple Send buttons found. No submission attempted.')
+            if count == 1 and send.is_enabled():
+                print('Clicking Send once...', file=sys.stderr, flush=True)
+                send.click(timeout=5000)
+                return
+            self.page.wait_for_timeout(200)
+        raise CopilotError('Send button was not uniquely identified and enabled. Prompt is filled but was not submitted. No Enter fallback was attempted.')
+
     def ask(self, prompt):
         if not prompt.strip():
             raise ValueError('Prompt must not be empty')
@@ -100,8 +118,7 @@ class Copilot:
         editor = self.wait_ready()
         replies = self.page.locator(self.reply_selector)
         tracker = Completion(replies.all_inner_texts())
-        editor.fill(prompt)
-        editor.press('Enter')
+        self.submit_prompt(editor, prompt)
         # No auto-retry: submission may have succeeded even if detection fails.
         stop = self.page.get_by_role('button', name=re.compile(r'stop (generating|responding|response)|arrêter', re.I))
         deadline = time.monotonic() + self.timeout

@@ -39,7 +39,7 @@ with Copilot() as copilot:
     print(answer)
 ```
 
-Every call clicks New chat first. Requests run sequentially. This version returns text only; Excel integration is not implemented yet.
+Every call clicks New chat first and submits by clicking a uniquely identified, enabled Send button once (rather than relying on Enter). Edge is launched with its Chromium sandbox enabled. Requests run sequentially. This version returns text only; Excel integration is not implemented yet.
 
 ## Current validation status
 
