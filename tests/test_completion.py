@@ -1,5 +1,5 @@
 import unittest
-from copilot_bridge import Completion
+from automation import Completion
 
 class CompletionTests(unittest.TestCase):
     def test_old_reply_is_never_returned(self):

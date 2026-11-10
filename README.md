@@ -1,14 +1,14 @@
-# Copilot Python Bridge
+# Work Automation
 
 Experimental Python automation for Microsoft 365 Copilot in installed Microsoft Edge. No extension, separate browser download, or local API server. This is unofficial UI automation, not Microsoft's Copilot API.
 
 ## First test on Windows
 
-Keep `copilot_bridge.py` and `requirements.txt` together. In that folder:
+Keep `automation.py` and `requirements.txt` together. In that folder:
 
 ```powershell
 python -m pip install -r requirements.txt
-python copilot_bridge.py --check
+python automation.py --check
 ```
 
 Do **not** run `playwright install`. The script uses installed Edge (`channel="msedge"`). Playwright includes its own automation driver; it is not pure Python internally.
@@ -18,13 +18,13 @@ A dedicated Edge window opens. Work SSO may sign in automatically, but this is n
 `--check` only verifies that a message editor is detected. It sends nothing. Next run the fictional connection test:
 
 ```powershell
-python copilot_bridge.py
+python automation.py
 ```
 
 Or provide a prompt:
 
 ```powershell
-python copilot_bridge.py --prompt "Does 'We held three workshops' describe a concrete activity? Answer Yes, No, or Unclear."
+python automation.py --prompt "Does 'We held three workshops' describe a concrete activity? Answer Yes, No, or Unclear."
 ```
 
 For prompts you do not want in shell history, place a UTF-8 file outside this repository and use `--prompt-file "C:\Work\prompt.txt"`. Prompt content is sent to your organization's Microsoft 365 Copilot service, not processed offline. Use only data approved for that service.
@@ -32,7 +32,7 @@ For prompts you do not want in shell history, place a UTF-8 file outside this re
 ## Python usage
 
 ```python
-from copilot_bridge import Copilot
+from automation import Copilot
 
 with Copilot() as copilot:
     answer = copilot.ask("Reply with exactly: Hello.")
