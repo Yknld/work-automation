@@ -22,3 +22,17 @@ class CompletionTests(unittest.TestCase):
         c=Completion([])
         c.update([''],True,0)
         self.assertIsNone(c.update([''],False,10))
+
+    def test_fast_reply_with_completion_control(self):
+        c=Completion([])
+        self.assertIsNone(c.update(['answer'],False,0,completed=True))
+        self.assertEqual(c.update(['answer'],False,3,completed=True),'answer')
+
+    def test_old_reply_with_copy_is_not_new(self):
+        c=Completion(['old'])
+        self.assertIsNone(c.update(['old'],False,10,completed=True))
+
+    def test_completion_control_does_not_override_streaming(self):
+        c=Completion([])
+        c.update(['answer'],True,0,completed=True)
+        self.assertIsNone(c.update(['answer'],True,10,completed=True))

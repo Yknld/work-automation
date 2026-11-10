@@ -22,14 +22,14 @@ class Completion:
         self.text = ''
         self.changed = 0
 
-    def update(self, replies, busy, now):
+    def update(self, replies, busy, now, completed=False):
         self.saw_busy |= busy
         if len(replies) <= len(self.previous):
             return None
         value = replies[-1].strip()
         if value != self.text:
             self.text, self.changed = value, now
-        if value and self.saw_busy and not busy and now - self.changed >= 3:
+        if value and (self.saw_busy or completed) and not busy and now - self.changed >= 3:
             return value
         return None
 
@@ -104,6 +104,28 @@ class Copilot:
             self.page.wait_for_timeout(200)
         raise CopilotError('Send button was not uniquely identified and enabled. Prompt is filled but was not submitted. No Enter fallback was attempted.')
 
+    def copy_buttons(self):
+        return self.page.get_by_role('button', name=re.compile(
+            r'^(Copy|Copy response|Copy message|Copy answer|Copier|Copier la réponse|Copier le message)(\s*\([^)]*\))?$', re.I
+        )).filter(visible=True)
+
+    def reply_near_copy(self, button, prompt):
+        # Read the smallest reply container around its toolbar, not the clipboard
+        # or whole page. Reject containers containing the prompt or composer.
+        return button.evaluate("""(button, prompt) => {
+            let node = button.parentElement;
+            for (let depth = 0; node && depth < 8; depth++, node = node.parentElement) {
+                if (['BODY', 'MAIN', 'HTML'].includes(node.tagName)) return '';
+                if (node.querySelector('[role="textbox"], textarea, [contenteditable="true"]')) return '';
+                if ((node.innerText || '').includes(prompt)) return '';
+                const copy = node.cloneNode(true);
+                copy.querySelectorAll('button, [role="button"], [role="toolbar"], script, style').forEach(n => n.remove());
+                const text = (copy.innerText || copy.textContent || '').trim();
+                if (text) return text;
+            }
+            return '';
+        }""", prompt)
+
     def ask(self, prompt):
         if not prompt.strip():
             raise ValueError('Prompt must not be empty')
@@ -118,13 +140,24 @@ class Copilot:
         editor = self.wait_ready()
         replies = self.page.locator(self.reply_selector)
         tracker = Completion(replies.all_inner_texts())
+        copies_before = self.copy_buttons().count()
+        copy_tracker = Completion([])
+        announced = False
         self.submit_prompt(editor, prompt)
         # No auto-retry: submission may have succeeded even if detection fails.
         stop = self.page.get_by_role('button', name=re.compile(r'stop (generating|responding|response)|arrêter', re.I))
         deadline = time.monotonic() + self.timeout
         while time.monotonic() < deadline:
             busy = any(stop.nth(i).is_visible() for i in range(stop.count()))
-            result = tracker.update(replies.all_inner_texts(), busy, time.monotonic())
+            copies = self.copy_buttons()
+            has_new_copy = copies.count() > copies_before
+            result = tracker.update(replies.all_inner_texts(), busy, time.monotonic(), completed=has_new_copy)
+            if result is None and has_new_copy:
+                body = self.reply_near_copy(copies.last, prompt)
+                result = copy_tracker.update([body], busy, time.monotonic(), completed=True)
+                if body and not announced:
+                    print('Reply detected; waiting for it to settle...', file=sys.stderr, flush=True)
+                    announced = True
             if result is not None:
                 return result
             self.page.wait_for_timeout(250)

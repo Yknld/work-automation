@@ -45,9 +45,9 @@ Every call clicks New chat first and submits by clicking a uniquely identified, 
 
 The reply-completion logic has local unit tests. **Live Microsoft 365 Copilot submission, SSO and response capture have not been tested against the intended work account.** The default assistant selectors are candidates, not confirmed selectors for that tenant. English and limited French controls are recognized.
 
-If the editor is found but reply capture times out, the prompt may already have been submitted. Do not repeatedly retry. In an interactive terminal the window stays open until you press Enter, so you can inspect it. A fast reply whose generation control was never observed is also treated as unverified, not success.
+If the editor is found but reply capture times out, the prompt may already have been submitted. Do not repeatedly retry. In an interactive terminal the window stays open until you press Enter, so you can inspect it. Fast replies can also complete when a new Copy control appears and the reply text settles.
 
-The adapter must detect an assistant-only reply body and a generation stop control. If your UI differs, the reply selector can be overridden with `--reply-selector`, but it must target assistant message bodies only, not the entire conversation. Control changes may require a code update. Do not send private chat contents, cookies or login details to diagnose this.
+The adapter detects assistant message selectors or a small response container around a newly appearing Copy button. It never clicks Copy or reads the clipboard. Completion requires settled text, no visible generation control, and either observed generation or a new Copy control. This is still heuristic; a pause during streaming can resemble completion. If your UI differs, the reply selector can be overridden with `--reply-selector`, but it must target assistant message bodies only, not the entire conversation. Control changes may require a code update. Do not send private chat contents, cookies or login details to diagnose this.
 
 UI completion detection is heuristic. This is a prototype for small fictional tests, not a validated unattended batch processor. There is no automatic resend, rate-limit bypass, or screenshot/page-content logging.
 
