@@ -1,5 +1,32 @@
 # Work Automation
 
+## Spreadsheet desktop window
+
+Download the whole repository together, then run:
+
+```powershell
+python -m pip install -r requirements.txt
+python desktop.py
+```
+
+This is a native Tkinter window, not a website: no localhost server or extension. Tkinter must be included in your Python installation (`python -m tkinter` opens its test window). Tkinter is not installed through pip.
+
+1. Choose spreadsheet A and its sheet. Row 1 must contain unique column headings.
+2. Optionally choose B, then choose the matching column in each file. Matches are exact after trimming spaces; leading-zero text IDs remain distinct from numeric IDs. Missing/duplicate B matches are flagged and skipped.
+3. Double-click columns to insert tags such as `{{A.Description}}` or `{{B.Results}}` into your prompt. Remove the starter tag if your workbook has no Description column.
+4. Enter comma-separated names for new output columns. Describe what each output should contain in the prompt.
+5. Choose inclusive Excel row numbers (row 2 is the first data row), and a new output filename.
+6. Preview the prompt, then Run one row on fictional data before running the full range.
+
+Output is a copy of A with new columns in the selected sheet. AI returns a JSON object with exactly your requested output names and string/null values. Invalid JSON is flagged, never silently accepted. Automation status/detail columns explain skips and failures. Completed means structurally valid output, not human-verified accuracy. Existing outputs are not overwritten. Sources remain unchanged.
+
+Progress saves after every row. Stop waits for the current request to finish. Browser failures halt the batch without resubmission. This initial UI does **not** support automatic resume or saved configurations yet: use the status column and a new output file with a remaining row range. Keep Excel closed on the output file. Edits to controls during a run do not affect the already-started configuration.
+
+Supported: ordinary `.xlsx` files, one header row, two files, one exact matching key, scalar text/null outputs. Formula inputs use the workbook's saved cached values; recalculate and save in Excel first. Formulas are preserved in the output but not calculated by Python. Macros and complex Excel objects are not supported; openpyxl may not preserve every advanced feature, so keep originals. New output columns are ordinary cells and do not automatically extend existing Excel tables.
+
+The existing `automation.py` browser workflow is unchanged. The desktop UI and spreadsheet processing are separate modules. A Mac window-launch smoke test and 15 local logic tests passed; end-to-end Windows/Copilot testing of this new UI is still needed.
+
+
 Experimental Python automation for Microsoft 365 Copilot in installed Microsoft Edge. No extension, separate browser download, or local API server. This is unofficial UI automation, not Microsoft's Copilot API.
 
 ## First test on Windows
