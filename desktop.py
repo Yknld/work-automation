@@ -48,6 +48,13 @@ class App:
         ttk.Button(settings,text='Choose output file',command=self.output).grid(row=2,column=0,sticky='w')
         ttk.Entry(settings,textvariable=self.destination,width=65,state='readonly').grid(row=2,column=1,columnspan=3)
         ttk.Button(settings,text='Open Output',command=lambda:self.open_file('output')).grid(row=2,column=4,padx=6)
+        pacing=ttk.Frame(shell);pacing.pack(fill='x',pady=4)
+        self.pause_every=tk.StringVar(value='100');self.pause_minutes=tk.StringVar(value='15')
+        ttk.Label(pacing,text='Take a break every').pack(side='left')
+        ttk.Entry(pacing,textvariable=self.pause_every,width=7).pack(side='left',padx=4)
+        ttk.Label(pacing,text='AI requests, for').pack(side='left')
+        ttk.Entry(pacing,textvariable=self.pause_minutes,width=7).pack(side='left',padx=4)
+        ttk.Label(pacing,text='minutes (applies when starting a run)').pack(side='left')
         self.delete_chats=tk.BooleanVar(value=False)
         ttk.Checkbutton(shell,text='Delete this run’s chat after each completed row is saved (cannot be undone)',variable=self.delete_chats).pack(anchor='w')
         actions=ttk.Frame(shell);actions.pack(fill='x')
@@ -106,7 +113,7 @@ class App:
         path=filedialog.asksaveasfilename(defaultextension='.xlsx',filetypes=[('Excel workbook','*.xlsx')],initialfile='automation_results.xlsx')
         if path:self.destination.set(path)
     def config(self):
-        return dict(delete_chats=self.delete_chats.get(),a=self.paths['A'].get(),b=self.paths['B'].get(),sheet_a=self.sheets['A'].get(),sheet_b=self.sheets['B'].get(),key_a=self.keys['A'].get(),key_b=self.keys['B'].get(),prompt=self.prompt.get('1.0','end').strip(),outputs=[s.strip() for s in self.outputs.get().split(',')],first=int(self.first.get()),last=int(self.last.get()),output=self.destination.get())
+        return dict(pause_every=int(self.pause_every.get()),pause_minutes=float(self.pause_minutes.get()),delete_chats=self.delete_chats.get(),a=self.paths['A'].get(),b=self.paths['B'].get(),sheet_a=self.sheets['A'].get(),sheet_b=self.sheets['B'].get(),key_a=self.keys['A'].get(),key_b=self.keys['B'].get(),prompt=self.prompt.get('1.0','end').strip(),outputs=[s.strip() for s in self.outputs.get().split(',')],first=int(self.first.get()),last=int(self.last.get()),output=self.destination.get())
     def preview(self):
         try:
             c=self.config();_,rows=read_sheet(c['a'],c['sheet_a'])

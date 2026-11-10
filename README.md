@@ -102,3 +102,9 @@ The desktop checkbox **Delete this run’s chat after each completed row is save
 Cleanup runs only after validated, non-null outputs are saved to Excel. Invalid, uncertain and null results retain their chats. Only the conversation recorded after this request can be targeted, via its exact URL path, never a title or position. Existing chats and prior runs are not swept. If any menu/control/identity check fails, the batch stops with saved results intact. The selectors follow the supplied UI flow but still need a Windows live test. Chat deletion is not a promise of backend data erasure; tenant retention rules still apply.
 
 Update all three files: automation.py, spreadsheet_jobs.py and desktop.py. No dependency reinstall is needed for cleanup.
+
+## Adjustable scheduled breaks
+
+The desktop app defaults to a **15-minute break after every 100 AI requests**, before sending the next eligible row. Change the request count and minutes before starting a run. Invalid AI replies count as requests; rows skipped for matching errors do not. There is no unnecessary pause after the final request. The log shows the remaining break time every 30 seconds. Stop cancels a break immediately, with completed rows already saved. Counters reset for each run; manual Copilot usage and previous runs are not counted.
+
+This is pacing, not a guarantee that Microsoft limits will reset after 15 minutes. A browser failure still stops without automatic resubmission. If already rate-limited, wait for the service to allow requests before restarting. The current app does not automatically resume a previous output workbook.

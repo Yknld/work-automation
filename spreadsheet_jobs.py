@@ -1,5 +1,7 @@
 """Spreadsheet prompt preparation and validated output, independent of the UI."""
 import json
+import math
+import time
 import re
 from pathlib import Path
 from openpyxl import load_workbook
@@ -90,7 +92,31 @@ def literal(cell, value):
         cell.data_type = 's'
 
 
+def throttle_settings(config):
+    every = int(config.get('pause_every', 100))
+    minutes = float(config.get('pause_minutes', 15))
+    if every < 1 or not math.isfinite(minutes) or minutes <= 0:
+        raise ValueError('Break interval must be at least 1 request and duration must be positive.')
+    return every, minutes * 60
+
+
+def cooldown(seconds, stop, report, clock=time.monotonic):
+    deadline = clock() + seconds
+    while not stop.is_set():
+        remaining = max(0, math.ceil(deadline-clock()))
+        if remaining == 0:
+            report('Break finished; continuing.')
+            return True
+        report(f'Scheduled break: {remaining//60:02d}:{remaining%60:02d} remaining. Stop cancels the run.')
+        if stop.wait(min(30, remaining)):
+            break
+    report('Stopped during scheduled break; completed rows are saved.')
+    return False
+
+
 def run_job(config, client_factory, stop, report):
+    pause_every, pause_seconds = throttle_settings(config)
+    requests_since_break = 0
     source, destination = Path(config['a']), Path(config['output'])
     if destination.resolve() in {source.resolve(), Path(config.get('b') or source).resolve()}:
         raise ValueError('Output must differ from both source files.')
@@ -131,7 +157,15 @@ def run_job(config, client_factory, stop, report):
                     literal(ws.cell(number,start+len(outputs)),'Needs review')
                     literal(ws.cell(number,start+len(outputs)+1),str(exc))
                     save();report(f'Row {number}: match/tag issue; skipped');continue
+                # Pause before the next eligible request, not after the final row.
+                # Invalid AI responses still count; skipped source rows do not.
+                if requests_since_break >= pause_every:
+                    if not cooldown(pause_seconds, stop, report):
+                        break
+                    requests_since_break = 0
+                if stop.is_set():break
                 try:
+                    requests_since_break += 1
                     raw = client.ask(request(prompt,outputs))
                 except Exception:
                     literal(ws.cell(number,start+len(outputs)),'Submission uncertain')

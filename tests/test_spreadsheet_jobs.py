@@ -1,6 +1,7 @@
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from openpyxl import Workbook, load_workbook
 from spreadsheet_jobs import prepare, parse_reply, run_job
@@ -26,7 +27,11 @@ class JobsTests(unittest.TestCase):
                 def __exit__(self,*a):pass
                 def ask(self,p):return '{"Answer":"=1+1"}'
             c=dict(a=str(source),b='',sheet_a='Sheet',key_a='',key_b='',first=2,last=3,prompt='{{A.Text}}',outputs=['Answer'],output=str(output))
-            run_job(c,Fake,threading.Event(),lambda _:None)
+            c.update(pause_every=1,pause_minutes=15)
+            with patch('spreadsheet_jobs.cooldown',return_value=True) as pause:
+                run_job(c,Fake,threading.Event(),lambda _:None)
+                self.assertEqual(pause.call_count,1)
+                self.assertEqual(pause.call_args.args[0],900)
             out=load_workbook(output);self.assertEqual(out.active['C2'].value,'=1+1');self.assertEqual(out.active['C2'].data_type,'s')
             self.assertEqual(out.active['D3'].value,'Completed');self.assertEqual(source.read_bytes(),original)
             with self.assertRaises(ValueError):run_job(c,Fake,threading.Event(),lambda _:None)
