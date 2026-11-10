@@ -1,5 +1,9 @@
 """Run: python desktop.py. Native desktop UI; no localhost server."""
 import queue
+import os
+import sys
+import subprocess
+from pathlib import Path
 import threading
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
@@ -17,7 +21,10 @@ class App:
         sources=ttk.Frame(shell);sources.pack(fill='x',pady=8)
         for name in ('A','B'):
             box=ttk.LabelFrame(sources,text=f'Spreadsheet {name}',padding=8);box.pack(side='left',fill='both',expand=True,padx=4)
-            self.paths[name]=tk.StringVar();ttk.Button(box,text='Choose .xlsx',command=lambda n=name:self.choose(n)).pack(anchor='w')
+            self.paths[name]=tk.StringVar()
+            file_actions=ttk.Frame(box);file_actions.pack(fill='x')
+            ttk.Button(file_actions,text='Choose .xlsx',command=lambda n=name:self.choose(n)).pack(side='left')
+            ttk.Button(file_actions,text=f'Open {name}',command=lambda n=name:self.open_file(n)).pack(side='left',padx=6)
             ttk.Entry(box,textvariable=self.paths[name],state='readonly').pack(fill='x',pady=4)
             self.sheets[name]=ttk.Combobox(box,state='readonly');self.sheets[name].pack(fill='x')
             self.sheets[name].bind('<<ComboboxSelected>>',lambda e,n=name:self.load(n))
@@ -40,6 +47,7 @@ class App:
         self.destination=tk.StringVar()
         ttk.Button(settings,text='Choose output file',command=self.output).grid(row=2,column=0,sticky='w')
         ttk.Entry(settings,textvariable=self.destination,width=65,state='readonly').grid(row=2,column=1,columnspan=3)
+        ttk.Button(settings,text='Open Output',command=lambda:self.open_file('output')).grid(row=2,column=4,padx=6)
         self.delete_chats=tk.BooleanVar(value=False)
         ttk.Checkbutton(shell,text='Delete this run’s chat after each completed row is saved (cannot be undone)',variable=self.delete_chats).pack(anchor='w')
         actions=ttk.Frame(shell);actions.pack(fill='x')
@@ -50,6 +58,29 @@ class App:
         self.log=tk.Text(shell,height=6,state='disabled',wrap='word');self.log.pack(fill='x',pady=8)
         ttk.Label(shell,text='Prompts go to Microsoft 365 Copilot through Edge. Originals stay unchanged. Close output Excel while running.').pack(anchor='w')
         root.after(100,self.poll);root.protocol('WM_DELETE_WINDOW',self.close)
+    def open_file(self, which):
+        if which == 'output' and self.running:
+            messagebox.showinfo('Output in use', 'Wait until the run finishes, or stop after the current row, before opening the output in Excel.')
+            return
+        value = self.destination.get() if which == 'output' else self.paths[which].get()
+        if not value:
+            messagebox.showinfo('Choose a file', 'Choose the file first.')
+            return
+        path = Path(value).resolve()
+        if not path.is_file():
+            messagebox.showinfo('File not available', 'The file does not exist yet. Run processing first for a new output file.')
+            return
+        if path.suffix.lower() != '.xlsx':
+            messagebox.showerror('File type', 'Only .xlsx workbooks can be opened here.')
+            return
+        try:
+            if sys.platform == 'win32':
+                os.startfile(str(path))
+            else:
+                subprocess.Popen(['open' if sys.platform == 'darwin' else 'xdg-open', str(path)])
+        except OSError as exc:
+            messagebox.showerror('Unable to open file', str(exc))
+
     def choose(self,n):
         if self.running:return
         path=filedialog.askopenfilename(filetypes=[('Excel workbook','*.xlsx')])
