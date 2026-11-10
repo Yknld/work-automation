@@ -74,8 +74,7 @@ class App:
         if self.running:
             messagebox.showinfo('Run in progress','Change redaction rules before the next run.');return
         window=tk.Toplevel(self.root);window.title('Local redaction rules');window.geometry('850x500')
-        ttk.Label(window,text='Replace values from any selected column in every prompt. B rules require ID matching.
-Blank source cells are ignored. Aliases are literal values separated by semicolons.').pack(anchor='w',padx=10,pady=8)
+        ttk.Label(window,text='Replace values from any selected column in every prompt. B rules require ID matching.\nBlank source cells are ignored. Aliases are literal values separated by semicolons.').pack(anchor='w',padx=10,pady=8)
         listing=tk.Listbox(window,height=8);listing.pack(fill='both',expand=True,padx=10)
         pending=[dict(r) for r in self.redaction_rules]
         def refresh():
@@ -108,8 +107,7 @@ Blank source cells are ignored. Aliases are literal values separated by semicolo
             self.redaction_rules=pending;self.redaction_label.set(f'Redaction: {len(pending)} rule(s)');window.destroy()
         buttons=ttk.Frame(window,padding=10);buttons.pack(fill='x')
         for label,fn in [('Add rule',add),('Remove selected',remove),('Apply rules',save),('Cancel',window.destroy)]:ttk.Button(buttons,text=label,command=fn).pack(side='left',padx=4)
-        ttk.Label(window,text='Normalized ignores case, accents and separators. Fuzzy may over-replace; preview first.
-Rules are row-specific and stay local. This is not guaranteed anonymization. Rules reset when the app closes.').pack(anchor='w',padx=10,pady=8)
+        ttk.Label(window,text='Normalized ignores case, accents and separators. Fuzzy may over-replace; preview first.\nRules are row-specific and stay local. This is not guaranteed anonymization. Rules reset when the app closes.').pack(anchor='w',padx=10,pady=8)
 
     def open_file(self, which):
         if which == 'output' and self.running:
