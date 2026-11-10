@@ -27,3 +27,15 @@ class SubmissionTests(unittest.TestCase):
         with patch('automation.time.monotonic',side_effect=[0,1,16]):
             with self.assertRaises(CopilotError):client.submit_prompt(editor,'test')
         send.click.assert_not_called();editor.press.assert_not_called()
+
+    def test_cleanup_refuses_unowned_chat(self):
+        client=Copilot();client.page=Mock()
+        client.page.url='https://m365.cloud.microsoft/chat/conversation/personal'
+        with self.assertRaises(CopilotError):client.delete_saved_chat()
+        client.page.locator.assert_not_called()
+
+    def test_cleanup_refuses_changed_chat(self):
+        client=Copilot();client.page=Mock();client.owned_chat='/chat/conversation/created'
+        client.page.url='https://m365.cloud.microsoft/chat/conversation/personal'
+        with self.assertRaises(CopilotError):client.delete_saved_chat()
+        client.page.locator.assert_not_called()

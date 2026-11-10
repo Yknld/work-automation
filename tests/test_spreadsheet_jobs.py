@@ -40,3 +40,22 @@ class JobsTests(unittest.TestCase):
             c=dict(a=str(source),b='',sheet_a='Sheet',key_a='',key_b='',first=2,last=2,prompt='{{A.Text}}',outputs=['Answer'],output=str(out))
             with self.assertRaises(RuntimeError):run_job(c,Fake,threading.Event(),lambda _:None)
             self.assertEqual(load_workbook(out).active['C2'].value,'Submission uncertain')
+
+    def test_cleanup_only_after_valid_output_saved(self):
+        for reply, expected in [('{"Answer":"Yes"}',1), ('not json',0), ('{"Answer":null}',0)]:
+            with tempfile.TemporaryDirectory() as td:
+                source=Path(td)/'s.xlsx';out=Path(td)/'o.xlsx'
+                w=Workbook();w.active.append(['Text']);w.active.append(['data']);w.save(source)
+                deleted=[]
+                class Fake:
+                    def __enter__(self):return self
+                    def __exit__(self,*a):pass
+                    def ask(self,p):return reply
+                    def delete_saved_chat(self):
+                        saved=load_workbook(out)
+                        assert saved.active['B2'].value=='Yes'
+                        assert saved.active['C2'].value=='Completed'
+                        saved.close();deleted.append(True)
+                c=dict(a=str(source),b='',sheet_a='Sheet',key_a='',key_b='',first=2,last=2,prompt='{{A.Text}}',outputs=['Answer'],output=str(out),delete_chats=True)
+                run_job(c,Fake,threading.Event(),lambda _:None)
+                self.assertEqual(len(deleted),expected)

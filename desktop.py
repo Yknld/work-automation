@@ -40,6 +40,8 @@ class App:
         self.destination=tk.StringVar()
         ttk.Button(settings,text='Choose output file',command=self.output).grid(row=2,column=0,sticky='w')
         ttk.Entry(settings,textvariable=self.destination,width=65,state='readonly').grid(row=2,column=1,columnspan=3)
+        self.delete_chats=tk.BooleanVar(value=False)
+        ttk.Checkbutton(shell,text='Delete this run’s chat after each completed row is saved (cannot be undone)',variable=self.delete_chats).pack(anchor='w')
         actions=ttk.Frame(shell);actions.pack(fill='x')
         ttk.Button(actions,text='Preview first selected row',command=self.preview).pack(side='left')
         self.test=ttk.Button(actions,text='Run one row',command=lambda:self.start(True));self.test.pack(side='left',padx=6)
@@ -73,7 +75,7 @@ class App:
         path=filedialog.asksaveasfilename(defaultextension='.xlsx',filetypes=[('Excel workbook','*.xlsx')],initialfile='automation_results.xlsx')
         if path:self.destination.set(path)
     def config(self):
-        return dict(a=self.paths['A'].get(),b=self.paths['B'].get(),sheet_a=self.sheets['A'].get(),sheet_b=self.sheets['B'].get(),key_a=self.keys['A'].get(),key_b=self.keys['B'].get(),prompt=self.prompt.get('1.0','end').strip(),outputs=[s.strip() for s in self.outputs.get().split(',')],first=int(self.first.get()),last=int(self.last.get()),output=self.destination.get())
+        return dict(delete_chats=self.delete_chats.get(),a=self.paths['A'].get(),b=self.paths['B'].get(),sheet_a=self.sheets['A'].get(),sheet_b=self.sheets['B'].get(),key_a=self.keys['A'].get(),key_b=self.keys['B'].get(),prompt=self.prompt.get('1.0','end').strip(),outputs=[s.strip() for s in self.outputs.get().split(',')],first=int(self.first.get()),last=int(self.last.get()),output=self.destination.get())
     def preview(self):
         try:
             c=self.config();_,rows=read_sheet(c['a'],c['sheet_a'])

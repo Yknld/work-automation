@@ -94,3 +94,11 @@ python -m unittest discover -s tests -v
 
 - [Playwright Python: installed Edge and enterprise policies](https://playwright.dev/python/docs/browsers)
 - [Microsoft 365 Copilot Chat API: official alternative](https://learn.microsoft.com/en-us/microsoft-365/copilot/extensibility/api/ai-services/chat/overview)
+
+## Optional chat cleanup
+
+The desktop checkbox **Delete this run’s chat after each completed row is saved** is off by default. Enable it to retain fresh conversations per row while removing successful automation chats from the sidebar. Deletion cannot be undone and may also delete tasks associated with that chat, as the Microsoft confirmation explains.
+
+Cleanup runs only after validated, non-null outputs are saved to Excel. Invalid, uncertain and null results retain their chats. Only the conversation recorded after this request can be targeted, via its exact URL path, never a title or position. Existing chats and prior runs are not swept. If any menu/control/identity check fails, the batch stops with saved results intact. The selectors follow the supplied UI flow but still need a Windows live test. Chat deletion is not a promise of backend data erasure; tenant retention rules still apply.
+
+Update all three files: automation.py, spreadsheet_jobs.py and desktop.py. No dependency reinstall is needed for cleanup.

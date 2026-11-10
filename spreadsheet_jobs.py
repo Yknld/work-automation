@@ -148,6 +148,13 @@ def run_job(config, client_factory, stop, report):
                 literal(ws.cell(number,start+len(outputs)),status)
                 literal(ws.cell(number,start+len(outputs)+1),detail)
                 save();report(f'Row {number}: {status}')
+                if config.get('delete_chats') and status == 'Completed':
+                    try:
+                        client.delete_saved_chat()
+                        report(f'Row {number}: saved chat deleted')
+                    except Exception:
+                        report('Cleanup could not be verified. Batch stopped; saved answers are safe. Inspect Edge before continuing.')
+                        break
     finally:
         book.close()
     report('Stopped after current row.' if stop.is_set() else 'Finished. Output saved.')
