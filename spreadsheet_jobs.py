@@ -1,30 +1,68 @@
 """Spreadsheet prompt preparation and validated output, independent of the UI."""
 import json
+import csv
 import math
 import time
 import re
 from pathlib import Path
-from openpyxl import load_workbook
+from openpyxl import load_workbook, Workbook
 
 from redaction import rules_for_rows, redact
 
 TAG = re.compile(r'\{\{([AB])\.([^{}]+)\}\}')
 
 
-def read_sheet(path, sheet):
-    book = load_workbook(path, data_only=True, read_only=True)
+def csv_records(path):
     try:
-        ws = book[sheet]
-        headers = [str(c.value).strip() if c.value is not None else '' for c in ws[1]]
-        used = [h for h in headers if h]
-        if len(used) != len(set(used)):
-            raise ValueError('Duplicate column headings. Give each column a unique name first.')
-        if any('{' in h or '}' in h for h in used):
-            raise ValueError('Column headings cannot contain braces.')
-        rows = {i: dict(zip(headers, values)) for i, values in enumerate(ws.iter_rows(min_row=2, values_only=True), 2)}
-        return headers, rows
-    finally:
-        book.close()
+        with open(path, newline='', encoding='utf-8-sig') as stream:
+            sample=stream.read(65536);stream.seek(0)
+            try: dialect=csv.Sniffer().sniff(sample, delimiters=',;\t')
+            except csv.Error: dialect=csv.excel
+            records=list(csv.reader(stream, dialect=dialect, strict=True))
+    except UnicodeDecodeError:
+        raise ValueError('CSV must use UTF-8 encoding. Save it as CSV UTF-8 in Excel.') from None
+    if not records or not records[0]:raise ValueError('CSV has no header row.')
+    width=len(records[0])
+    for row in records[1:]:
+        if len(row)>width:raise ValueError('CSV row has more fields than its header.')
+        row.extend(['']*(width-len(row)))
+    if any(len(v)>32767 for row in records for v in row):
+        raise ValueError('A CSV field exceeds the supported 32,767-character cell limit.')
+    return records
+
+
+def sheet_names(path):
+    if Path(path).suffix.lower()=='.csv':
+        csv_records(path)
+        return ['CSV']
+    if Path(path).suffix.lower()!='.xlsx':raise ValueError('Choose an .xlsx or .csv file.')
+    book=load_workbook(path,read_only=True)
+    try:return book.sheetnames
+    finally:book.close()
+
+
+def read_sheet(path, sheet):
+    if Path(path).suffix.lower()=='.csv':
+        records=csv_records(path)
+    else:
+        book = load_workbook(path, data_only=True, read_only=True)
+        try: records=list(book[sheet].iter_rows(values_only=True))
+        finally: book.close()
+    if not records:raise ValueError('Sheet has no header row.')
+    headers=[str(v).strip() if v is not None else '' for v in records[0]]
+    used=[h for h in headers if h]
+    if len(used)!=len(set(used)):
+        raise ValueError('Duplicate column headings. Give each column a unique name first.')
+    if any('{' in h or '}' in h for h in used):
+        raise ValueError('Column headings cannot contain braces.')
+    return headers,{i:dict(zip(headers,values)) for i,values in enumerate(records[1:],2)}
+
+
+def csv_safe(value):
+    # CSV has no literal-string cell type; protect spreadsheet applications.
+    if isinstance(value,str) and value.lstrip().startswith(('=','+','-','@')):
+        return "'"+value
+    return value
 
 
 def key(value):
@@ -133,6 +171,8 @@ def run_job(config, client_factory, stop, report):
     source, destination = Path(config['a']), Path(config['output'])
     if destination.resolve() in {source.resolve(), Path(config.get('b') or source).resolve()}:
         raise ValueError('Output must differ from both source files.')
+    if destination.suffix.lower() not in {'.xlsx','.csv'}:
+        raise ValueError('Output must end in .xlsx or .csv.')
     if destination.exists():
         raise ValueError('Choose a new output filename; existing files are never overwritten.')
     headers, rows = read_sheet(source, config['sheet_a'])
@@ -146,15 +186,27 @@ def run_job(config, client_factory, stop, report):
     if config['first'] < 2 or config['last'] < config['first'] or config['last'] > max(rows, default=1):
         raise ValueError('Row range must be within spreadsheet A data rows (starting at 2).')
     # Preserve source formulas. Read values above from Excel cached results only.
-    book = load_workbook(source)
-    ws = book[config['sheet_a']]
+    if source.suffix.lower()=='.csv':
+        book=Workbook();ws=book.active;ws.title='CSV'
+        for i,row in enumerate(csv_records(source),1):
+            for j,value in enumerate(row,1):literal(ws.cell(i,j),value)
+    else:
+        book = load_workbook(source)
+        ws = book[config['sheet_a']]
     start = ws.max_column+1
     for j,h in enumerate(outputs+status_headers,start):
         literal(ws.cell(1,j),h)
     def save():
-        tmp=destination.with_suffix('.partial.xlsx')
+        tmp=destination.with_suffix('.partial'+destination.suffix)
         try:
-            book.save(tmp)
+            if destination.suffix.lower()=='.csv':
+                with tmp.open('w',newline='',encoding='utf-8-sig') as stream:
+                    writer=csv.writer(stream)
+                    # CSV export contains the selected sheet only.
+                    for row in ws.iter_rows(values_only=True):
+                        writer.writerow([csv_safe(value) for value in row])
+            else:
+                book.save(tmp)
             tmp.replace(destination)
         finally:
             if tmp.exists():tmp.unlink()

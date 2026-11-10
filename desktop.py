@@ -9,7 +9,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from openpyxl import load_workbook
 from automation import Copilot
-from spreadsheet_jobs import read_sheet, prepare, request, run_job
+from spreadsheet_jobs import read_sheet, sheet_names, prepare, request, run_job
 
 class App:
     def __init__(self, root):
@@ -24,7 +24,7 @@ class App:
             box=ttk.LabelFrame(sources,text=f'Spreadsheet {name}',padding=8);box.pack(side='left',fill='both',expand=True,padx=4)
             self.paths[name]=tk.StringVar()
             file_actions=ttk.Frame(box);file_actions.pack(fill='x')
-            ttk.Button(file_actions,text='Choose .xlsx',command=lambda n=name:self.choose(n)).pack(side='left')
+            ttk.Button(file_actions,text='Choose Excel / CSV',command=lambda n=name:self.choose(n)).pack(side='left')
             ttk.Button(file_actions,text=f'Open {name}',command=lambda n=name:self.open_file(n)).pack(side='left',padx=6)
             ttk.Entry(box,textvariable=self.paths[name],state='readonly').pack(fill='x',pady=4)
             self.sheets[name]=ttk.Combobox(box,state='readonly');self.sheets[name].pack(fill='x')
@@ -121,8 +121,8 @@ class App:
         if not path.is_file():
             messagebox.showinfo('File not available', 'The file does not exist yet. Run processing first for a new output file.')
             return
-        if path.suffix.lower() != '.xlsx':
-            messagebox.showerror('File type', 'Only .xlsx workbooks can be opened here.')
+        if path.suffix.lower() not in {'.xlsx','.csv'}:
+            messagebox.showerror('File type', 'Only .xlsx or .csv files can be opened here.')
             return
         try:
             if sys.platform == 'win32':
@@ -134,10 +134,10 @@ class App:
 
     def choose(self,n):
         if self.running:return
-        path=filedialog.askopenfilename(filetypes=[('Excel workbook','*.xlsx')])
+        path=filedialog.askopenfilename(filetypes=[('Excel workbook','*.xlsx'),('CSV file','*.csv')])
         if not path:return
         try:
-            book=load_workbook(path,read_only=True);names=book.sheetnames;book.close()
+            names=sheet_names(path)
             self.paths[n].set(path);self.sheets[n]['values']=names;self.sheets[n].set(names[0]);self.load(n)
         except Exception as exc:messagebox.showerror('Workbook',str(exc))
     def load(self,n):
@@ -154,7 +154,7 @@ class App:
         if selection:self.prompt.insert('insert','{{'+n+'.'+self.lists[n].get(selection[0])+'}}')
     def output(self):
         if self.running:return
-        path=filedialog.asksaveasfilename(defaultextension='.xlsx',filetypes=[('Excel workbook','*.xlsx')],initialfile='automation_results.xlsx')
+        path=filedialog.asksaveasfilename(defaultextension='.xlsx',filetypes=[('Excel workbook','*.xlsx'),('CSV file','*.csv')],initialfile='automation_results.xlsx')
         if path:self.destination.set(path)
     def config(self):
         return dict(redaction_rules=[dict(r) for r in self.redaction_rules],pause_every=int(self.pause_every.get()),pause_minutes=float(self.pause_minutes.get()),delete_chats=self.delete_chats.get(),a=self.paths['A'].get(),b=self.paths['B'].get(),sheet_a=self.sheets['A'].get(),sheet_b=self.sheets['B'].get(),key_a=self.keys['A'].get(),key_b=self.keys['B'].get(),prompt=self.prompt.get('1.0','end').strip(),outputs=[s.strip() for s in self.outputs.get().split(',')],first=int(self.first.get()),last=int(self.last.get()),output=self.destination.get())

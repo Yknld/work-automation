@@ -122,3 +122,13 @@ Each rule uses the current A row or its uniquely matched B row. B-source rules r
 Redaction applies to substituted values and literal prompt text before sending. Preview displays the same redacted task. Output-column names are used as JSON keys: choose generic labels, never put sensitive values in output names. Originals and the source-data copy in the output workbook remain unchanged; redaction protects outgoing prompt text, not the saved workbook. There is no reverse substitution or external redaction service. Only values present in configured current-row fields or aliases are covered; other identifying context can remain. Use approved test data and preview before processing real records.
 
 Update desktop.py, spreadsheet_jobs.py, and the new redaction.py together. No new package required.
+
+## CSV support
+
+Inputs A and B can independently be `.xlsx` or `.csv`. Select CSV in the file picker; it appears as a single sheet named `CSV`. Tags, matching, redaction and throttling work the same way. Input CSV must be UTF-8 (with or without BOM); comma, semicolon and tab delimiters are detected. Quoted commas and line breaks are supported. Row numbers count CSV records, including the header as row 1, not physical text lines.
+
+Choose `.xlsx` or `.csv` in the output picker (the filename extension controls output format). CSV output is comma-delimited UTF-8 with BOM and includes only the selected A sheet. Excel output from a CSV input contains one sheet. Excel-to-Excel retains the existing workbook behaviour. CSV contains no formatting, types or multiple sheets; leading-zero IDs are preserved in the file, but Excel may reinterpret them on direct opening. Import those columns as text when needed.
+
+CSV output prefixes strings starting with formula-trigger characters (`=`, `+`, `-`, `@`, after whitespace) with an apostrophe to prevent execution when opened in Excel. This also affects source strings such as signed phone numbers; use XLSX output if you need literal text without this CSV escape. Formulas from an Excel source are exported as escaped formula text, not evaluated values. Fields above 32,767 characters are rejected rather than truncated. Existing output files are never overwritten.
+
+Update `desktop.py` and `spreadsheet_jobs.py` for CSV support. No new packages are needed.
