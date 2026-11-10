@@ -1,0 +1,10 @@
+__pycache__/
+.venv/
+.env
+*profile*/
+*session*/
+*.xlsx
+*.csv
+*.log
+prompts/
+results/
