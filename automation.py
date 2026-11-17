@@ -81,7 +81,10 @@ class Copilot:
     def wait_ready(self):
         deadline = time.monotonic() + self.timeout
         while time.monotonic() < deadline:
-            if self.page.url.startswith('https://m365.cloud.microsoft/'):
+            origin = urlsplit(self.page.url)
+            if origin.scheme == 'https' and origin.netloc.lower() in {
+                'm365.cloud.microsoft', 'copilot.cloud.microsoft'
+            }:
                 editor = self.composer()
                 if editor is not None and editor.is_editable():
                     return editor
