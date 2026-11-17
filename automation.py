@@ -35,8 +35,9 @@ class Completion:
         return None
 
 class Copilot:
-    def __init__(self, reply_selector=DEFAULT_REPLY, timeout=180):
+    def __init__(self, reply_selector=DEFAULT_REPLY, timeout=180, progress=None):
         self.reply_selector = reply_selector
+        self.progress = progress or (lambda message: print(message, file=sys.stderr, flush=True))
         self.timeout = timeout
         self.context = None
         self.runtime = None
@@ -69,22 +70,34 @@ class Copilot:
 
     def composer(self):
         # Only choose an unambiguous visible editor, never arbitrary page content.
-        candidates = self.page.get_by_role('textbox').filter(visible=True)
-        if candidates.count() == 1:
-            return candidates.first
-        for name in ['Message Copilot', 'Envoyer un message à Copilot']:
-            candidate = self.page.get_by_role('textbox', name=name, exact=True)
-            if candidate.count() == 1 and candidate.is_visible():
-                return candidate
+        surfaces = [self.page]
+        for frame in self.page.frames:
+            if frame != self.page.main_frame and self.trusted(frame.url):
+                surfaces.append(frame)
+        label = re.compile(r'message.*copilot|copilot.*message', re.I)
+        for surface in surfaces:
+            for candidate in (
+                surface.get_by_role('textbox', name=label),
+                surface.get_by_placeholder(label),
+                surface.locator('[contenteditable="true"], [contenteditable="plaintext-only"], textarea'),
+            ):
+                visible = candidate.filter(visible=True)
+                if visible.count() == 1 and visible.is_editable():
+                    self.surface = surface
+                    return visible
         return None
+
+    @staticmethod
+    def trusted(url):
+        origin = urlsplit(url)
+        return origin.scheme == 'https' and origin.netloc.lower() in {
+            'm365.cloud.microsoft', 'copilot.cloud.microsoft'
+        }
 
     def wait_ready(self):
         deadline = time.monotonic() + self.timeout
         while time.monotonic() < deadline:
-            origin = urlsplit(self.page.url)
-            if origin.scheme == 'https' and origin.netloc.lower() in {
-                'm365.cloud.microsoft', 'copilot.cloud.microsoft'
-            }:
+            if self.trusted(self.page.url):
                 editor = self.composer()
                 if editor is not None and editor.is_editable():
                     return editor
@@ -92,9 +105,11 @@ class Copilot:
         raise CopilotError('Copilot editor not ready. Check the visible Edge window for sign-in, policy messages, or a changed interface.')
 
     def submit_prompt(self, editor, prompt):
+        self.progress("Found message box. Entering prompt…")
         editor.fill(prompt)
+        self.progress("Prompt entered. Looking for Send…")
         # Wait for the app to enable Send after processing the editor input.
-        send = self.page.get_by_role('button', name=re.compile(
+        send = getattr(self, 'surface', self.page).get_by_role('button', name=re.compile(
             r'^(Send|Send message|Send prompt|Submit|Submit prompt|Envoyer|Envoyer le message)(\s*\([^)]*\))?$', re.I
         )).filter(visible=True)
         deadline = time.monotonic() + 15
@@ -110,7 +125,7 @@ class Copilot:
         raise CopilotError('Send button was not uniquely identified and enabled. Prompt is filled but was not submitted. No Enter fallback was attempted.')
 
     def copy_buttons(self):
-        return self.page.get_by_role('button', name=re.compile(
+        return self.surface.get_by_role('button', name=re.compile(
             r'^(Copy|Copy response|Copy message|Copy answer|Copier|Copier la réponse|Copier le message)(\s*\([^)]*\))?$', re.I
         )).filter(visible=True)
 
@@ -186,6 +201,7 @@ class Copilot:
     def ask(self, prompt):
         if not prompt.strip():
             raise ValueError('Prompt must not be empty')
+        self.progress("Looking for the Copilot message box…")
         self.wait_ready()
         # Every call begins independently; refuse to append to an unknown conversation.
         new_chat = self.page.get_by_role('button', name=re.compile(r'^(New chat|Nouvelle conversation)$', re.I))
@@ -194,17 +210,20 @@ class Copilot:
         if new_chat.count() != 1:
             raise CopilotError('Cannot identify New chat uniquely. No prompt was sent.')
         self.owned_chat = None
+        self.progress("Opening a fresh chat…")
         new_chat.click()
+        self.progress("Looking for the message box in the fresh chat…")
         editor = self.wait_ready()
         fresh_chat = '/chat/conversation/' not in urlsplit(self.page.url).path
-        replies = self.page.locator(self.reply_selector)
+        replies = self.surface.locator(self.reply_selector)
         tracker = Completion(replies.all_inner_texts())
         copies_before = self.copy_buttons().count()
         copy_tracker = Completion([])
         announced = False
         self.submit_prompt(editor, prompt)
+        self.progress("Clicked Send. Waiting for a reply…")
         # No auto-retry: submission may have succeeded even if detection fails.
-        stop = self.page.get_by_role('button', name=re.compile(r'stop (generating|responding|response)|arrêter', re.I))
+        stop = self.surface.get_by_role('button', name=re.compile(r'stop (generating|responding|response)|arrêter', re.I))
         deadline = time.monotonic() + self.timeout
         while time.monotonic() < deadline:
             busy = any(stop.nth(i).is_visible() for i in range(stop.count()))

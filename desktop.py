@@ -175,7 +175,7 @@ class App:
         except Exception as exc:messagebox.showerror('Settings',str(exc));return
         self.running=True;self.stop.clear();self.run.config(state='disabled');self.test.config(state='disabled')
         def work():
-            try:run_job(c,Copilot,self.stop,lambda msg:self.events.put(msg))
+            try:run_job(c,lambda: Copilot(progress=self.events.put),self.stop,lambda msg:self.events.put(msg))
             except Exception as exc:self.events.put(f'Stopped: {exc}')
             finally:self.events.put(None)
         threading.Thread(target=work,daemon=False).start()
