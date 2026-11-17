@@ -5,6 +5,7 @@ import sys
 import subprocess
 from pathlib import Path
 import threading
+import time
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from openpyxl import load_workbook
@@ -174,6 +175,9 @@ class App:
             if one:c['last']=c['first']
         except Exception as exc:messagebox.showerror('Settings',str(exc));return
         self.running=True;self.stop.clear();self.run.config(state='disabled');self.test.config(state='disabled')
+        self.stage = "Starting row diagnostics v2"
+        self.last_update = self.last_notice = time.monotonic()
+        self.events.put(self.stage)
         def work():
             try:run_job(c,lambda: Copilot(progress=self.events.put),self.stop,lambda msg:self.events.put(msg))
             except Exception as exc:self.events.put(f'Stopped: {exc}')
@@ -185,8 +189,20 @@ class App:
             if msg is None:
                 self.running=False;self.run.config(state='normal');self.test.config(state='normal')
             else:
-                self.log.config(state='normal');self.log.insert('end',msg+'\n');self.log.see('end');self.log.config(state='disabled')
+                self.stage = msg
+                self.last_update = self.last_notice = time.monotonic()
+                self.log_line(msg)
+        now = time.monotonic()
+        if self.running and now - self.last_notice >= 10:
+            self.last_notice = now
+            self.log_line(f'Still waiting ({int(now-self.last_update)}s) — {self.stage}')
         self.root.after(100,self.poll)
+    def log_line(self, message):
+        self.log.config(state="normal")
+        self.log.insert("end", time.strftime("[%H:%M:%S] ") + message + "\n")
+        self.log.see("end")
+        self.log.config(state="disabled")
+
     def close(self):
         if self.running:
             self.stop.set();messagebox.showinfo('Stopping','Stopping after the current request. Close this window once the run has stopped.');return

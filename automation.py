@@ -75,6 +75,7 @@ class Copilot:
             if frame != self.page.main_frame and self.trusted(frame.url):
                 surfaces.append(frame)
         label = re.compile(r'message.*copilot|copilot.*message', re.I)
+        self.editor_counts = []
         for surface in surfaces:
             for candidate in (
                 surface.get_by_role('textbox', name=label),
@@ -82,7 +83,9 @@ class Copilot:
                 surface.locator('[contenteditable="true"], [contenteditable="plaintext-only"], textarea'),
             ):
                 visible = candidate.filter(visible=True)
-                if visible.count() == 1 and visible.is_editable():
+                count = visible.count()
+                self.editor_counts.append(count)
+                if count == 1 and visible.is_editable():
                     self.surface = surface
                     return visible
         return None
@@ -96,11 +99,17 @@ class Copilot:
 
     def wait_ready(self):
         deadline = time.monotonic() + self.timeout
+        next_report = 0
         while time.monotonic() < deadline:
             if self.trusted(self.page.url):
                 editor = self.composer()
                 if editor is not None and editor.is_editable():
                     return editor
+            if time.monotonic() >= next_report:
+                counts = getattr(self, "editor_counts", []) if self.trusted(self.page.url) else []
+                self.progress(f"Waiting for editable box: trusted page={self.trusted(self.page.url)}, "
+                              f"frames={len(self.page.frames)}, visible matches per locator={counts}")
+                next_report = time.monotonic() + 15
             self.page.wait_for_timeout(500)
         raise CopilotError('Copilot editor not ready. Check the visible Edge window for sign-in, policy messages, or a changed interface.')
 

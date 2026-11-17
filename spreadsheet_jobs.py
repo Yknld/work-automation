@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 from openpyxl import load_workbook, Workbook
 
+from automation import CopilotError
 from redaction import rules_for_rows, redact
 
 TAG = re.compile(r'\{\{([AB])\.([^{}]+)\}\}')
@@ -175,6 +176,7 @@ def run_job(config, client_factory, stop, report):
         raise ValueError('Output must end in .xlsx or .csv.')
     if destination.exists():
         raise ValueError('Choose a new output filename; existing files are never overwritten.')
+    report('Reading input spreadsheets')
     headers, rows = read_sheet(source, config['sheet_a'])
     b_rows = read_sheet(config['b'],config['sheet_b'])[1] if config.get('b') else None
     outputs = config['outputs']
@@ -210,12 +212,14 @@ def run_job(config, client_factory, stop, report):
             tmp.replace(destination)
         finally:
             if tmp.exists():tmp.unlink()
+    report('Saving initial output')
     save()
     try:
+        report('Launching Edge and opening Copilot')
         with client_factory() as client:
             for number in range(config['first'], config['last']+1):
                 if stop.is_set():break
-                report(f'Row {number}: preparing')
+                report(f'Row {number}: matching spreadsheet tags and applying redaction rules')
                 try:
                     prompt = prepare(config['prompt'],rows[number],b_rows,config['key_a'],config['key_b'],config.get('redaction_rules'))
                 except ValueError as exc:
@@ -231,8 +235,12 @@ def run_job(config, client_factory, stop, report):
                 if stop.is_set():break
                 try:
                     requests_since_break += 1
-                    raw = client.ask(request(prompt,outputs))
-                except Exception:
+                    payload = request(prompt,outputs)
+                    report(f'Row {number}: prompt prepared, handing it to Edge')
+                    raw = client.ask(payload)
+                except Exception as exc:
+                    reason = str(exc) if isinstance(exc, CopilotError) else type(exc).__name__
+                    report(f'Row {number}: browser step failed ({reason})')
                     literal(ws.cell(number,start+len(outputs)),'Submission uncertain')
                     literal(ws.cell(number,start+len(outputs)+1),'Browser request failed; inspect chat before retrying. Batch stopped.')
                     save()
@@ -246,6 +254,7 @@ def run_job(config, client_factory, stop, report):
                     status,detail='Invalid response','AI output did not match the requested JSON structure. Review the chat; no automatic retry.'
                 literal(ws.cell(number,start+len(outputs)),status)
                 literal(ws.cell(number,start+len(outputs)+1),detail)
+                report(f'Row {number}: saving result')
                 save();report(f'Row {number}: {status}')
                 if config.get('delete_chats') and status == 'Completed':
                     try:
